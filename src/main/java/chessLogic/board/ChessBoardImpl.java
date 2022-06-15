@@ -1,6 +1,7 @@
 package chessLogic.board;
 
 import chessLogic.chessCoordinates.ChessBoardCoordinateIntegerForm;
+import chessLogic.chessCoordinates.ChessBoardCoordinates;
 import chessLogic.figure.ChessFigure;
 import chessLogic.figure.ChessFigureImpl;
 import chessLogic.figure.ChessFigureLabel;
@@ -11,19 +12,19 @@ import lombok.SneakyThrows;
 import org.javatuples.Pair;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static chessLogic.chessCoordinates.ChessBoardCoordinates.*;
 import static chessLogic.figure.ChessFigureLabel.*;
-import static chessLogic.figure.ChessFigures.*;
+import static chessLogic.figure.ChessFiguresAndMoveRules.*;
 
+//TODO добавить логику для шаха и мата
 @Component
 public class ChessBoardImpl implements ChessBoard {
     private final @NonNull Set<ChessFigure> figures = new HashSet<>();
+    private ChessFigureLabel turnToMove = WHITE;
+    private boolean isGameEnded = false;
 
     @Getter
     private final @NonNull List<Pair<ChessBoardCoordinateIntegerForm, ChessBoardCoordinateIntegerForm>> moves = new ArrayList<>();
@@ -36,12 +37,15 @@ public class ChessBoardImpl implements ChessBoard {
     @SneakyThrows(ChessLogicException.class)
     public void move(ChessBoardCoordinateIntegerForm startField,
                      ChessBoardCoordinateIntegerForm destField) {
+        throwExceptionIfGameIsEnded();
         throwExceptionIfBadCoordinates(startField, destField);
         ChessFigure figure = getFigureByField(startField);
         throwExceptionIfItsNotLegalMove(figure, startField, destField);
         doMove(figure, startField, destField);
+        switchTurnToMove();
     }
 
+    @Override
     public ChessFigure getFigureByField(ChessBoardCoordinateIntegerForm fieldCoordinate) {
         List<ChessFigure> figuresOnThatField = figures.stream()
                 .filter(figure -> fieldCoordinate.equals(figure.getCoordinate()))
@@ -55,10 +59,122 @@ public class ChessBoardImpl implements ChessBoard {
         }
     }
 
+    //TODO внедрить использование этого метода
+    @Override
+    public ChessFigure getFigureByField(ChessBoardCoordinates fieldCoordinate) {
+        return getFigureByField(new ChessBoardCoordinateIntegerForm(fieldCoordinate));
+    }
+
+    @Override
+    public boolean isFieldUnderAttackByFiguresOfThisLabel(ChessFigureLabel labelOfAttacker, ChessBoardCoordinateIntegerForm field) {
+        Set<ChessFigure> figuresWithAttackerLabel = figures.stream()
+                .filter(figure -> figure.getLabel().equals(labelOfAttacker))
+                .collect(Collectors.toSet());
+        for (ChessFigure figure : figuresWithAttackerLabel) {
+            try {
+                ChessBoardCoordinateIntegerForm figurePosition = figure.getCoordinate();
+                throwExceptionIfThereAreFriendlyPeaceOrKingInDestinationField(field, labelOfAttacker);
+                throwExceptionIfStartAndDestFieldAreSame(figurePosition, field);
+                throwExceptionIfThereAreFiguresOnPath(figurePosition, field);
+                if (figure.getFigureType() != PAWN) {
+                    throwExceptionIfThisMoveIsNotLegalForThatFigure(figure, figurePosition, field);
+                } else {
+                    int absDX = Math.abs(field.getXCoordinate() - figurePosition.getXCoordinate());
+                    int dY = field.getYCoordinate() - figurePosition.getYCoordinate();
+                    if (!((labelOfAttacker.equals(ChessFigureLabel.WHITE) && absDX == 1 && dY == 1) ||
+                            (labelOfAttacker.equals(ChessFigureLabel.BLACK) && absDX == 1 && dY == -1))) {
+                        throw new ChessLogicException();
+                    }
+                }
+            } catch (ChessLogicException e) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
     private void doMove(ChessFigure figure,
                         ChessBoardCoordinateIntegerForm startPos,
                         ChessBoardCoordinateIntegerForm newPos) {
+        if (isCastling(figure, startPos, newPos)) {
+            doCastling(figure, startPos, newPos);
+        } else {
+            doSimpleMove(figure, startPos, newPos);
+        }
+        endGameIfItsCheckmate();
+    }
 
+    private void switchTurnToMove() {
+        if (turnToMove == WHITE) {
+            turnToMove = BLACK;
+        } else {
+            turnToMove = WHITE;
+        }
+    }
+
+    private boolean isCastling(ChessFigure figure,
+                               ChessBoardCoordinateIntegerForm startPos,
+                               ChessBoardCoordinateIntegerForm newPos) {
+        if (figure.getFigureType() == KING) {
+            return (startPos.equals(new ChessBoardCoordinateIntegerForm(E1)) && newPos.equals(new ChessBoardCoordinateIntegerForm(G1)))
+                    || (startPos.equals(new ChessBoardCoordinateIntegerForm(E1)) && newPos.equals(new ChessBoardCoordinateIntegerForm(C1)))
+                    || (startPos.equals(new ChessBoardCoordinateIntegerForm(E8)) && newPos.equals(new ChessBoardCoordinateIntegerForm(G8)))
+                    || (startPos.equals(new ChessBoardCoordinateIntegerForm(E8)) && newPos.equals(new ChessBoardCoordinateIntegerForm(C8)));
+        }
+        return false;
+    }
+
+    private void doCastling(ChessFigure figure,
+                            ChessBoardCoordinateIntegerForm startPos,
+                            ChessBoardCoordinateIntegerForm newPos) {
+        figure.setCoordinate(newPos);
+        figure.getPositionsHistory().add(newPos);
+        moves.add(new Pair<>(startPos, newPos));
+        ChessBoardCoordinates newPosition = getCoordinateByIntegerForm(newPos);
+
+        ChessFigure rock = null;
+        ChessBoardCoordinates rockPosition = null;
+        ChessBoardCoordinateIntegerForm newRockPosition = null;
+
+        switch (Objects.requireNonNull(newPosition)) {
+            case G1:
+                rockPosition = H1;
+                newRockPosition = new ChessBoardCoordinateIntegerForm(F1);
+                break;
+            case C1:
+                rockPosition = A1;
+                newRockPosition = new ChessBoardCoordinateIntegerForm(D1);
+                break;
+            case G8:
+                rockPosition = H8;
+                newRockPosition = new ChessBoardCoordinateIntegerForm(F8);
+                break;
+            case C8:
+                rockPosition = A8;
+                newRockPosition = new ChessBoardCoordinateIntegerForm(D8);
+                break;
+            default:
+                String message = "Problem in code connected with castling";
+                throw new ChessLogicException(message);
+        }
+
+        rock = getFigureByField(rockPosition);
+        rock.setCoordinate(newRockPosition);
+        rock.getPositionsHistory().add(newRockPosition);
+    }
+
+    private void doSimpleMove(ChessFigure figure,
+                              ChessBoardCoordinateIntegerForm startPos,
+                              ChessBoardCoordinateIntegerForm newPos) {
+        figure.setCoordinate(newPos);
+        figure.getPositionsHistory().add(newPos);
+        moves.add(new Pair<>(startPos, newPos));
+        figures.remove(getFigureByField(newPos));
+    }
+
+    private void endGameIfItsCheckmate() {
+        //TODO реализовать метод
     }
 
     private void initFiguresInStartPositions() {
@@ -98,10 +214,17 @@ public class ChessBoardImpl implements ChessBoard {
         figures.add(new ChessFigureImpl(H7, BLACK, PAWN));
     }
 
+    private void throwExceptionIfGameIsEnded() {
+        if (isGameEnded) {
+            String message = "Game is ended";
+            throw new ChessLogicException(message);
+        }
+    }
+
     private void throwExceptionIfBadCoordinates(ChessBoardCoordinateIntegerForm startField,
                                                 ChessBoardCoordinateIntegerForm destField) {
         if (!(startField.isLegalChessBoardCoordinate() && destField.isLegalChessBoardCoordinate())) {
-            String message = "invocation move method on chess board with non consistent coordinates";
+            String message = "Invocation move method on chess board with non consistent coordinates";
             throw new ChessLogicException(message);
         }
     }
@@ -109,20 +232,29 @@ public class ChessBoardImpl implements ChessBoard {
     private void throwExceptionIfItsNotLegalMove(ChessFigure figure,
                                                  ChessBoardCoordinateIntegerForm startField,
                                                  ChessBoardCoordinateIntegerForm destField) {
-        throwExceptionIfThereAreFriendlyPeaceInDestinationField(destField, figure.getLabel());
+        throwExceptionIfItsIncorrectLabelOfMovingPeace(figure);
+        throwExceptionIfThereAreFriendlyPeaceOrKingInDestinationField(destField, figure.getLabel());
         throwExceptionIfStartAndDestFieldAreSame(startField, destField);
         throwExceptionIfThisMoveIsNotLegalForThatFigure(figure, startField, destField);
         throwExceptionIfThereAreFiguresOnPath(startField, destField);
+        throwExceptionIfFriendlyKingIsUnderAttackAfterMove(startField, destField);
     }
 
-    private void throwExceptionIfThereAreFriendlyPeaceInDestinationField
+    private void throwExceptionIfItsIncorrectLabelOfMovingPeace(ChessFigure figure) {
+        if (figure.getLabel() != turnToMove) {
+            String message = "Incorrect label Of moving peace";
+            throw new ChessLogicException(message);
+        }
+    }
+
+    private void throwExceptionIfThereAreFriendlyPeaceOrKingInDestinationField
             (ChessBoardCoordinateIntegerForm destFieldCoordinate,
              ChessFigureLabel label) {
         figures.stream()
-                .filter(figure -> label.equals(figure.getLabel()))
+                .filter(figure -> label.equals(figure.getLabel()) || figure.getFigureType() == KING)
                 .forEach(figure -> {
                     if (destFieldCoordinate.equals(figure.getCoordinate())) {
-                        String message = "There are friendly peace in destination field";
+                        String message = "There are friendly peace or king in destination field";
                         throw new ChessLogicException(message);
                     }
                 });
@@ -174,5 +306,11 @@ public class ChessBoardImpl implements ChessBoard {
                 }
             }
         }
+    }
+
+    private void throwExceptionIfFriendlyKingIsUnderAttackAfterMove
+            (ChessBoardCoordinateIntegerForm startField,
+             ChessBoardCoordinateIntegerForm destField) {
+        //TODO реализовать метод
     }
 }

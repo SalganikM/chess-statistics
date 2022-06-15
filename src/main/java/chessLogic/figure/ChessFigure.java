@@ -15,5 +15,5 @@ public interface ChessFigure {
 
     ChessFigureLabel getLabel();
 
-    ChessFigures getFigureType();
+    ChessFiguresAndMoveRules getFigureType();
 }
