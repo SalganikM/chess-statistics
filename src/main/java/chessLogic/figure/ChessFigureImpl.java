@@ -2,6 +2,7 @@ package chessLogic.figure;
 
 import chessLogic.chessCoordinates.ChessBoardCoordinateIntegerForm;
 import chessLogic.chessCoordinates.ChessBoardCoordinates;
+import chessLogic.enums.ChessFigureLabel;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;

@@ -3,6 +3,7 @@ package chessLogic.figure;
 import chessLogic.board.ChessBoard;
 import chessLogic.chessCoordinates.ChessBoardCoordinateIntegerForm;
 import chessLogic.chessCoordinates.ChessBoardCoordinates;
+import chessLogic.enums.ChessFigureLabel;
 import chessLogic.exceptions.ChessLogicException;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static chessLogic.chessCoordinates.ChessBoardCoordinates.*;
-import static chessLogic.figure.ChessFigureLabel.*;
+import static chessLogic.enums.ChessFigureLabel.*;
 
 @RequiredArgsConstructor
 public enum ChessFiguresAndMoveRules {

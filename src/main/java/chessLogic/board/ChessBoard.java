@@ -3,20 +3,25 @@ package chessLogic.board;
 import chessLogic.chessCoordinates.ChessBoardCoordinateIntegerForm;
 import chessLogic.chessCoordinates.ChessBoardCoordinates;
 import chessLogic.figure.ChessFigure;
-import chessLogic.figure.ChessFigureLabel;
+import chessLogic.enums.ChessFigureLabel;
 import org.javatuples.Pair;
 
 import java.util.List;
+import java.util.Set;
 
 public interface ChessBoard {
-    public void move(ChessBoardCoordinateIntegerForm startPos,
+    void move(ChessBoardCoordinateIntegerForm startPos,
                      ChessBoardCoordinateIntegerForm newPos);
 
-    public ChessFigure getFigureByField(ChessBoardCoordinateIntegerForm fieldCoordinate);
+    ChessFigure getFigureByField(ChessBoardCoordinateIntegerForm fieldCoordinate);
 
-    public ChessFigure getFigureByField(ChessBoardCoordinates fieldCoordinate);
+    ChessFigure getFigureByField(ChessBoardCoordinates fieldCoordinate);
 
-    public List<Pair<ChessBoardCoordinateIntegerForm, ChessBoardCoordinateIntegerForm>> getMoves();
+    List<Pair<ChessBoardCoordinateIntegerForm, ChessBoardCoordinateIntegerForm>> getMoves();
 
-    public boolean isFieldUnderAttackByFiguresOfThisLabel(ChessFigureLabel labelOfAttacker, ChessBoardCoordinateIntegerForm field);
+    boolean isFieldUnderAttackByFiguresOfThisLabel(Set<ChessFigure> figures,
+                                                   ChessFigureLabel labelOfAttacker,
+                                                   ChessBoardCoordinateIntegerForm field);
+
+    boolean isFieldUnderAttackByFiguresOfThisLabel(ChessFigureLabel labelOfAttacker, ChessBoardCoordinateIntegerForm chessBoardCoordinateIntegerForm);
 }

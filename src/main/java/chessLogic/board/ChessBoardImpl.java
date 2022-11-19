@@ -2,9 +2,10 @@ package chessLogic.board;
 
 import chessLogic.chessCoordinates.ChessBoardCoordinateIntegerForm;
 import chessLogic.chessCoordinates.ChessBoardCoordinates;
+import chessLogic.enums.ChessWinner;
 import chessLogic.figure.ChessFigure;
 import chessLogic.figure.ChessFigureImpl;
-import chessLogic.figure.ChessFigureLabel;
+import chessLogic.enums.ChessFigureLabel;
 import chessLogic.exceptions.ChessLogicException;
 import lombok.Getter;
 import lombok.NonNull;
@@ -13,18 +14,21 @@ import org.javatuples.Pair;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static chessLogic.chessCoordinates.ChessBoardCoordinates.*;
-import static chessLogic.figure.ChessFigureLabel.*;
+import static chessLogic.enums.ChessFigureLabel.*;
+import static chessLogic.enums.ChessWinner.DRAW;
+import static chessLogic.enums.ChessWinner.getByLabel;
 import static chessLogic.figure.ChessFiguresAndMoveRules.*;
 
-//TODO добавить логику для шаха и мата
 @Component
 public class ChessBoardImpl implements ChessBoard {
     private final @NonNull Set<ChessFigure> figures = new HashSet<>();
     private ChessFigureLabel turnToMove = WHITE;
     private boolean isGameEnded = false;
+    private ChessWinner winner;
 
     @Getter
     private final @NonNull List<Pair<ChessBoardCoordinateIntegerForm, ChessBoardCoordinateIntegerForm>> moves = new ArrayList<>();
@@ -42,7 +46,6 @@ public class ChessBoardImpl implements ChessBoard {
         ChessFigure figure = getFigureByField(startField);
         throwExceptionIfItsNotLegalMove(figure, startField, destField);
         doMove(figure, startField, destField);
-        switchTurnToMove();
     }
 
     @Override
@@ -59,14 +62,21 @@ public class ChessBoardImpl implements ChessBoard {
         }
     }
 
-    //TODO внедрить использование этого метода
     @Override
     public ChessFigure getFigureByField(ChessBoardCoordinates fieldCoordinate) {
         return getFigureByField(new ChessBoardCoordinateIntegerForm(fieldCoordinate));
     }
 
     @Override
-    public boolean isFieldUnderAttackByFiguresOfThisLabel(ChessFigureLabel labelOfAttacker, ChessBoardCoordinateIntegerForm field) {
+    public boolean isFieldUnderAttackByFiguresOfThisLabel(ChessFigureLabel labelOfAttacker,
+                                                          ChessBoardCoordinateIntegerForm field) {
+        return isFieldUnderAttackByFiguresOfThisLabel(figures, labelOfAttacker, field);
+    }
+
+    @Override
+    public boolean isFieldUnderAttackByFiguresOfThisLabel(Set<ChessFigure> figures,
+                                                          ChessFigureLabel labelOfAttacker,
+                                                          ChessBoardCoordinateIntegerForm field) {
         Set<ChessFigure> figuresWithAttackerLabel = figures.stream()
                 .filter(figure -> figure.getLabel().equals(labelOfAttacker))
                 .collect(Collectors.toSet());
@@ -102,6 +112,7 @@ public class ChessBoardImpl implements ChessBoard {
         } else {
             doSimpleMove(figure, startPos, newPos);
         }
+        switchTurnToMove();
         endGameIfItsCheckmate();
     }
 
@@ -174,7 +185,37 @@ public class ChessBoardImpl implements ChessBoard {
     }
 
     private void endGameIfItsCheckmate() {
-        //TODO реализовать метод
+        AtomicBoolean thereAreMove = new AtomicBoolean(false);
+        figures.stream()
+                .filter(figure -> figure.getLabel() == turnToMove)
+                .forEach(figure -> {
+                    for (ChessBoardCoordinates coordinate : ChessBoardCoordinates.values()) {
+                        try {
+                            throwExceptionIfItsNotLegalMove
+                                    (figure, figure.getCoordinate(), coordinate.getCoordinate());
+                            thereAreMove.set(true);
+                        } catch (ChessLogicException ignored) {
+                        }
+                    }
+                });
+        if (!thereAreMove.get()) {
+            isGameEnded = true;
+            if (kingIsUnderAttack()) {
+                winner = getByLabel(getOtherLabel(turnToMove));
+            } else {
+                winner = DRAW;
+            }
+        }
+    }
+
+    private boolean kingIsUnderAttack() {
+        ChessBoardCoordinateIntegerForm field = figures.stream()
+                .filter(x -> x.getLabel() == turnToMove &&
+                        x.getFigureType() == KING)
+                .findFirst()
+                .get()
+                .getCoordinate();
+        return isFieldUnderAttackByFiguresOfThisLabel(getOtherLabel(turnToMove), field);
     }
 
     private void initFiguresInStartPositions() {
@@ -237,12 +278,12 @@ public class ChessBoardImpl implements ChessBoard {
         throwExceptionIfStartAndDestFieldAreSame(startField, destField);
         throwExceptionIfThisMoveIsNotLegalForThatFigure(figure, startField, destField);
         throwExceptionIfThereAreFiguresOnPath(startField, destField);
-        throwExceptionIfFriendlyKingIsUnderAttackAfterMove(startField, destField);
+        throwExceptionIfFriendlyKingIsUnderAttackAfterMove(figure, destField);
     }
 
     private void throwExceptionIfItsIncorrectLabelOfMovingPeace(ChessFigure figure) {
         if (figure.getLabel() != turnToMove) {
-            String message = "Incorrect label Of moving peace";
+            String message = "Incorrect label щf moving peace";
             throw new ChessLogicException(message);
         }
     }
@@ -309,8 +350,29 @@ public class ChessBoardImpl implements ChessBoard {
     }
 
     private void throwExceptionIfFriendlyKingIsUnderAttackAfterMove
-            (ChessBoardCoordinateIntegerForm startField,
+            (ChessFigure figure,
              ChessBoardCoordinateIntegerForm destField) {
-        //TODO реализовать метод
+        Set<ChessFigure> figuresAfterMove = Set.copyOf(figures);
+        figuresAfterMove.stream()
+                .filter(x -> x.equals(figure))
+                .forEach(x -> x.setCoordinate(destField));
+
+        if (figure.getFigureType() == KING) {
+            if (isFieldUnderAttackByFiguresOfThisLabel
+                    (figuresAfterMove, figure.getLabel(), destField)) {
+                throw new ChessLogicException("");
+            }
+        } else {
+            ChessBoardCoordinateIntegerForm field = figuresAfterMove.stream()
+                    .filter(x -> x.getLabel() == figure.getLabel() &&
+                            x.getFigureType() == KING)
+                    .findFirst()
+                    .get()
+                    .getCoordinate();
+            if (isFieldUnderAttackByFiguresOfThisLabel
+                    (figuresAfterMove, figure.getLabel(), field)) {
+                throw new ChessLogicException("");
+            }
+        }
     }
 }

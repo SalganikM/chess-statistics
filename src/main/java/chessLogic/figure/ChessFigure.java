@@ -1,6 +1,7 @@
 package chessLogic.figure;
 
 import chessLogic.chessCoordinates.ChessBoardCoordinateIntegerForm;
+import chessLogic.enums.ChessFigureLabel;
 
 import java.util.List;
 
